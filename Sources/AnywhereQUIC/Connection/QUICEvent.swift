@@ -32,3 +32,25 @@ public enum QUICConnectionState: Hashable, Sendable {
     case draining
     case closed
 }
+
+public enum QUICTimeoutKind: CaseIterable, Hashable, Sendable {
+    case pacing
+    case ackDelay
+    case lossDetection
+    case pathValidation
+    case pathMTUDiscovery
+    case connectionIDs
+    case keepAlive
+    case handshake
+    case idle
+    case closing
+    
+    public var isCoarse: Bool {
+        switch self {
+        case .pacing, .ackDelay, .lossDetection, .pathValidation, .pathMTUDiscovery:
+            return false
+        case .connectionIDs, .keepAlive, .handshake, .idle, .closing:
+            return true
+        }
+    }
+}

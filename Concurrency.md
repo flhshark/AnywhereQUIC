@@ -16,6 +16,12 @@ Two drivers interleaving would split events between them, so stream data could b
 
 Other threads may call self-contained methods at any time: `openStream`, `send(_:on:fin:)`, `finishSending`, `resetStream`, `stopSending`, `shutdownStream`, `extendReceiveWindow`, `sendDatagram`, `sendDatagrams`, `close`, `migrate`, `cancelPendingMigration`, `setCongestionController`, `setBrutalBandwidth` and the read-only properties. Their effects are picked up by the driver's next write sequence, so the caller should wake the driver afterwards. `extendReceiveWindow` is the exception: it returns `true` only when a `MAX_STREAM_DATA` or `MAX_DATA` update is due, and the driver needs waking only then.
 
+## Timers and clocks
+
+`nextTimeout` is the earliest of several independent deadlines. `nextTimeout(_:)` exposes each `QUICTimeoutKind` separately, and `nextPreciseTimeout` / `nextCoarseTimeout` fold them into two groups: pacing, ACK delay, loss detection, path validation and PMTUD need a tight timer; connection ID retirement, keep-alive, handshake, idle and closing tolerate seconds of slack. A driver that cares about energy arms the precise group on its own zero-leeway timer and hands the coarse group to a shared, coalescing timer with a generous tolerance. `handleTimeout(now:)` is the same call either way; it checks every deadline against `now`, so a coarse timer that fires late or a precise one that fires for a different reason both do the right thing.
+
+The connection never reads a clock. Every entry point takes `now`, and the driver must use one timeline consistently. `QUICInstant.now` is uptime and pauses during system sleep; `QUICInstant.continuousNow` keeps advancing. A driver that keeps connections alive across sleep, or shares timers with code that measures on the continuous clock, should use `continuousNow` so idle and keep-alive expiries account for the time spent asleep.
+
 ## Write batches and pacing
 
 `write(into:now:)` stops returning new packets once the current batch reaches `sendQuantum` bytes or the pacer blocks; ACK-only packets are still produced. `finishWriting(now:)` closes the batch and sets the pacing deadline reported by `nextTimeout`. When pacing is not active yet and the batch was full, the deadline is immediate. The driver must re-arm its timer from `nextTimeout` after every write sequence, otherwise a connection with queued data stalls.

@@ -58,6 +58,27 @@ public final class QUICConnection: Sendable {
     public var pathMaxSendUDPPayloadSize: Int { core.withLock { $0.pathMaxSendUDPPayloadSize } }
     public var hasPendingEvents: Bool { core.withLock { $0.hasPendingEvents } }
     public var nextTimeout: QUICInstant? { core.withLock { $0.nextTimeout } }
+    public func nextTimeout(_ kind: QUICTimeoutKind) -> QUICInstant? { core.withLock { $0.nextTimeout(kind) } }
+    public var nextPreciseTimeout: QUICInstant? {
+        core.withLock { core in
+            var earliest: QUICInstant?
+            for kind in QUICTimeoutKind.allCases where !kind.isCoarse {
+                guard let expiry = core.nextTimeout(kind) else { continue }
+                if earliest.map({ expiry < $0 }) ?? true { earliest = expiry }
+            }
+            return earliest
+        }
+    }
+    public var nextCoarseTimeout: QUICInstant? {
+        core.withLock { core in
+            var earliest: QUICInstant?
+            for kind in QUICTimeoutKind.allCases where kind.isCoarse {
+                guard let expiry = core.nextTimeout(kind) else { continue }
+                if earliest.map({ expiry < $0 }) ?? true { earliest = expiry }
+            }
+            return earliest
+        }
+    }
     public var closeReasonIfClosed: QUICConnectionCloseReason? { core.withLock { $0.closeReasonIfClosed } }
     public var maxDatagramPayloadSize: Int { core.withLock { $0.maxDatagramPayloadSize } }
     public var pendingDatagramCount: Int { core.withLock { $0.pendingDatagramCount } }

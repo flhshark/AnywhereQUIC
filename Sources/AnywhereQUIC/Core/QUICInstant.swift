@@ -6,6 +6,9 @@
 //
 
 import Dispatch
+#if canImport(Darwin)
+import Darwin
+#endif
 
 public struct QUICInstant: Hashable, Sendable {
     public static let distantFuture = QUICInstant(nanoseconds: .max)
@@ -18,6 +21,14 @@ public struct QUICInstant: Hashable, Sendable {
 
     public static var now: QUICInstant {
         return QUICInstant(nanoseconds: DispatchTime.now().uptimeNanoseconds)
+    }
+
+    public static var continuousNow: QUICInstant {
+        #if canImport(Darwin)
+        return QUICInstant(nanoseconds: clock_gettime_nsec_np(CLOCK_MONOTONIC))
+        #else
+        return Self.now
+        #endif
     }
 
     public static func + (lhs: QUICInstant, rhs: Duration) -> QUICInstant {

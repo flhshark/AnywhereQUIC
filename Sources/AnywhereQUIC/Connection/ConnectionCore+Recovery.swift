@@ -465,14 +465,8 @@ extension ConnectionCore {
         return earliest
     }
 
-    func internalExpiry() -> Nanoseconds {
+    func connectionIDExpiry() -> Nanoseconds {
         var earliest: Nanoseconds = Time.never
-        if let pathValidation = self.pathValidation {
-            earliest = Swift.min(earliest, pathValidation.nextExpiry)
-        }
-        if let pathMTUDiscovery = self.pathMTUDiscovery {
-            earliest = Swift.min(earliest, pathMTUDiscovery.expiry)
-        }
         let pto = self.pto(for: self.applicationSpace)
         let retirement = self.destinationIDs.nextRetirementExpiry
         if retirement != Time.never {
@@ -486,25 +480,54 @@ extension ConnectionCore {
         return earliest
     }
 
-    func computeExpiry() -> Nanoseconds {
+    func expiry(of kind: QUICTimeoutKind) -> Nanoseconds {
         switch self.state {
         case .closed:
             return Time.never
         case .closing, .draining:
-            return self.closingEndsAt
+            return kind == .closing ? self.closingEndsAt : Time.never
         case .handshaking, .established:
             break
         }
-        var earliest = Swift.min(self.lossDetectionTimer, self.ackDelayExpiry())
-        earliest = Swift.min(earliest, self.internalExpiry())
-        earliest = Swift.min(earliest, self.keepAliveExpiry)
-        earliest = Swift.min(earliest, self.handshakeExpiry())
-        earliest = Swift.min(earliest, self.idleExpiry())
-        return Swift.min(earliest, self.pacer.nextSendTime)
+        switch kind {
+        case .pacing:
+            return self.pacer.nextSendTime
+        case .ackDelay:
+            return self.ackDelayExpiry()
+        case .lossDetection:
+            return self.lossDetectionTimer
+        case .pathValidation:
+            return self.pathValidation?.nextExpiry ?? Time.never
+        case .pathMTUDiscovery:
+            return self.pathMTUDiscovery?.expiry ?? Time.never
+        case .connectionIDs:
+            return self.connectionIDExpiry()
+        case .keepAlive:
+            return self.keepAliveExpiry
+        case .handshake:
+            return self.handshakeExpiry()
+        case .idle:
+            return self.idleExpiry()
+        case .closing:
+            return Time.never
+        }
+    }
+
+    func computeExpiry() -> Nanoseconds {
+        var earliest: Nanoseconds = Time.never
+        for kind in QUICTimeoutKind.allCases {
+            earliest = Swift.min(earliest, self.expiry(of: kind))
+        }
+        return earliest
     }
 
     var nextTimeout: QUICInstant? {
         let expiry = self.computeExpiry()
+        return expiry == Time.never ? nil : QUICInstant(nanoseconds: expiry)
+    }
+
+    func nextTimeout(_ kind: QUICTimeoutKind) -> QUICInstant? {
+        let expiry = self.expiry(of: kind)
         return expiry == Time.never ? nil : QUICInstant(nanoseconds: expiry)
     }
 
